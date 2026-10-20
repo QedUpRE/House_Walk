@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Scope Walk">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Property Analysis</title>
+<style>
+:root{--bg:#eef0ee;--card:#fff;--tx:#17201b;--mu:#667069;--ac:#1f5c46;--hot:#b3261e;--ln:#d5dad6;--in:#f6f8f6}
+@media(prefers-color-scheme:dark){:root{--bg:#121613;--card:#1c211e;--tx:#e8ece9;--mu:#98a39c;--ac:#5fbf98;--hot:#ff8a80;--ln:#333b36;--in:#141815}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,"Helvetica Neue",Arial,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:640px;margin:0 auto;padding:12px}
+h1{font-size:22px;margin:8px 0 12px;letter-spacing:-.3px}
+.card,details{background:var(--card);border:1px solid var(--ln);border-radius:10px;margin:0 0 10px}
+.card{padding:12px}
+summary{padding:14px 12px;font-weight:700;font-size:17px;cursor:pointer;display:flex;justify-content:space-between;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary small{color:var(--mu);font-weight:400}
+summary.hot{color:var(--hot)}
+.body{padding:0 12px 12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+label{display:block;font-size:13px;color:var(--mu)}
+input,textarea,select{width:100%;font:inherit;font-size:16px;color:var(--tx);background:var(--in);border:1px solid var(--ln);border-radius:7px;padding:8px;margin-top:2px}
+textarea{min-height:70px;margin-top:10px}
+button{font:inherit;font-weight:600;border:0;border-radius:8px;padding:10px 14px;background:var(--ac);color:#fff}
+button.alt{background:transparent;color:var(--ac);border:1px solid var(--ac)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.ph{display:flex;gap:8px;margin-top:10px;align-items:flex-start}
+.ph img{width:64px;height:64px;object-fit:cover;border-radius:6px;flex:none}
+.ph div{flex:1;font-size:12px;color:var(--mu);word-break:break-all}
+.ph input{font-size:14px;padding:5px}
+.ph b{color:var(--hot);cursor:pointer;padding:4px 8px}
+.pick{display:inline-block;background:var(--ac);color:#fff;border-radius:8px;padding:10px 14px;font-weight:600;margin-top:10px}
+.pick input{display:none}
+#rep{display:none;background:#fff;color:#000;padding:16px;border-radius:10px}
+#rep h2{margin:0 0 4px}#rep h3{margin:14px 0 4px;border-bottom:1px solid #999;font-size:16px}
+#rep p{margin:2px 0;font-size:14px}#rep .f{display:inline-block;width:48%;font-size:14px;vertical-align:top}
+#rep .n{white-space:pre-wrap}
+@media print{body{background:#fff}main>*:not(#rep){display:none!important}#rep{display:block!important;padding:0}.noprint{display:none}}
+</style></head><body><main>
+<h1>Property Analysis</h1>
+<div id="app">
+<div class="card">
+<label>Address<input id="addr"></label>
+<div class="grid" style="margin-top:8px"><label>Date<input id="date" type="date"></label>
+<label>iCloud folder link<input id="link" type="url" placeholder="Paste once"></label></div>
+</div>
+<div id="secs"></div>
+<div class="card">
+<div class="row">
+<button onclick="report()">Generate report</button>
+<button class="alt" onclick="exportPh()">Send photos to Files</button>
+<button class="alt" onclick="newProj()">New project</button>
+</div>
+<p style="font-size:13px;color:var(--mu);margin:8px 0 0">Send photos to Files, choose your iCloud Drive project folder, then share that folder and paste its link above.</p>
+</div>
+</div>
+<div id="rep"></div>
+</main>
+<script>
+// Field syntax: "Label" = text box, "Label=Y" = Yes/No, "Label=P" = percent, "Label=A/B/C" = custom dropdown
+const O={Y:["Yes","No"],P:["0%","10%","20%","30%","40%","50%","60%","70%","80%","90%","100%"]};
+const F=s=>s?s.split("|").map(x=>{const k=x.indexOf("=");return k<0?[x,null]:[x.slice(0,k),O[x.slice(k+1)]||x.slice(k+1).split("/")]}):[];
+const S=[
+["Exterior","Brick|Wood Siding|Vinyl Siding|Stucco"],
+["House Details","Year Built|Property SF|Stories=1/2/3/4|Bi-Level=Y|Basement=Y|Beds=1/2/3/4/5/6/7/8|Baths=1/1.5/2/2.5/3/3.5/4/5/6|Garage=None/1 Car/2 Car/3 Car|Carport=Y|Pool=Y|A/C Type=Central/Window Unit/Mini-Split/None|Garage Conversion=Y|Garage Conversion SF|M/H=Y|Lot Size"],
+["Water","Water Source=City/Well|Sewer Source=City/Septic"],
+["Roof","Roof Type=3-Tab/Architectural/Tar|Re-Deck %=P|Tear-Off Layers=1/2/3/4|Pitch (__/12)|LF of Soffit to replace",1],
+["Doors","Entry|Interior|Service Door|Vinyl Sliding Patio Door|French Door|Single Garage Door|Double Garage Door|Garage Door Opener(s)|Door and Base Trim|LF"],
+["Windows","Vinyl|Wood|Quantity|Sm|Med|Lg"],
+["Ext Paint","Brick=Y|Frame=Y|Siding=Y|Stucco=Y|% to be painted=P|% to be power washed=P"],
+["Foundation","Slab - % to repair=P|Pier & Beam Concrete Perimeter - % to repair=P|Post Pier & Beam - % to repair=P|Piers to be replaced",1],
+["Kitchen","Fridge=Y|Range=Y|Stovetop=Y|DW=Y|M/W=Y|Kitchen Sink=Y|SS Upgrade=Y|Replace Cabinets=Y|Cabinets LF|Replace Countertops=Y|Countertops LF|Countertop Type=Formica/Upgrade/Granite/Marble"],
+["Bathroom","Toilet(s)|Vanity 2ft|Vanity 4ft|Vanity 6ft|Vanity 8ft|Sink(s)|Tub(s)|Tile Around Tub|Shower Tile|Shower Pan|Shower Kit (Plastic Insert)"],
+["Int Paint","All Interior=Y|Doors=Y|Trim=Y|Retexture Ceilings %=P|Retexture Walls %=P|Remove Popcorn Ceilings %=P|Drywall - Replace Whole House=Y|Repair a Section=Y"],
+["Flooring","Tile/Laminate %=P|New Hardwood %=P|Refinish Hardwood %=P|Carpet %=P|Linoleum %=P|Replace Baseboard Trim=Y|Baseboard LF"],
+["Plumbing","Replumb House=Y|Replace Hot Water Tank=Y|Water Heater Type=Gas/Electric|Replace Fixtures=Y|Replace Septic Tank=Y|Town Sewer Tie-In=Y",1],
+["HVAC","Scope=Clean and Service/Replace All|Reuse Ducts=Y",1],
+["Electrical","Rewire Entire House=Y|Service Upgrade=Y|Replace All Switches and Outlets=Y|Smoke Detector(s)|CO Detector(s)|GFI(s)",1],
+["Fixtures","Internal Fan(s)|Lighting Fixture(s)|External Lighting Fixture(s)"],
+["Misc","Septic Repair Est. $|Dumpster(s)|Truck Load(s) of Debris|Permit(s)=Y|Driveway/Sidewalk=Y|Driveway/Sidewalk SF|Landscaping Est. $|Fencing=Y|Fencing LF"],
+["Notes",""]
+];
+const $=s=>document.querySelector(s);
+let D;try{D=JSON.parse(localStorage.getItem("scope"))}catch(e){}
+D=D||{addr:"",date:new Date().toISOString().slice(0,10),link:"",f:{},n:{},ph:[],c:{}};
+const save=()=>{try{localStorage.setItem("scope",JSON.stringify(D))}catch(e){alert("Storage is full. Send photos to Files, then start a new project.")}};
+// IndexedDB for photo blobs
+const db=new Promise((ok,no)=>{const r=indexedDB.open("scopephotos",1);r.onupgradeneeded=()=>r.result.createObjectStore("p");r.onsuccess=()=>ok(r.result);r.onerror=no});
+const tx=async(m,fn)=>{const d=await db;return new Promise((ok,no)=>{const q=fn(d.transaction("p",m).objectStore("p"));q.onsuccess=()=>ok(q.result);q.onerror=no})};
+const putB=(k,b)=>tx("readwrite",s=>s.put(b,k)),getB=k=>tx("readonly",s=>s.get(k)),delB=k=>tx("readwrite",s=>s.delete(k)),clrB=()=>tx("readwrite",s=>s.clear());
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const safe=t=>(t||"Property").replace(/[^a-z0-9]+/gi,"-").replace(/^-|-$/g,"").slice(0,40);
+
+function draw(){
+ $("#addr").value=D.addr;$("#date").value=D.date;$("#link").value=D.link;
+ $("#secs").innerHTML=S.map(([n,f,hot],i)=>{
+  const fs=F(f);
+  return `<details><summary class="${hot?"hot":""}">${n}<small id="c${i}"></small></summary><div class="body">
+  <div class="grid">${fs.map(([x,o],j)=>{const v=D.f[i+"."+j]||"";return `<label>${esc(x)}`+(o?`<select data-k="${i}.${j}"><option value="">—</option>${o.map(t=>`<option${t==v?" selected":""}>${esc(t)}</option>`).join("")}</select>`:`<input data-k="${i}.${j}" value="${esc(v)}">`)+`</label>`}).join("")}</div>
+  <textarea data-n="${i}" placeholder="${n=="Notes"?"General notes":"Notes for "+n}">${esc(D.n[i]||"")}</textarea>
+  <label class="pick">Add photos<input type="file" accept="image/*" multiple data-p="${i}"></label>
+  <div id="ph${i}"></div></div></details>`}).join("");
+ S.forEach((_,i)=>drawPh(i));
+}
+async function drawPh(i){
+ const el=$("#ph"+i),L=D.ph.filter(p=>p.s==i);
+ $("#c"+i).textContent=L.length?L.length+" photo"+(L.length>1?"s":""):"";
+ el.innerHTML="";
+ for(const p of L){
+  const b=await getB(p.id);if(!b)continue;
+  const d=document.createElement("div");d.className="ph";
+  d.innerHTML=`<img src="${URL.createObjectURL(b)}"><div>${esc(p.name)}<input placeholder="Caption" value="${esc(p.cap||"")}"></div><b>✕</b>`;
+  d.querySelector("input").oninput=e=>{p.cap=e.target.value;save()};
+  d.querySelector("b").onclick=async()=>{if(!confirm("Delete this photo?"))return;await delB(p.id);D.ph=D.ph.filter(x=>x!==p);save();drawPh(i)};
+  el.appendChild(d);
+ }
+}
+function shrink(file){return new Promise((ok,no)=>{const im=new Image(),u=URL.createObjectURL(file);
+ im.onload=()=>{const k=Math.min(1,1600/Math.max(im.width,im.height)),c=document.createElement("canvas");
+  c.width=im.width*k;c.height=im.height*k;c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+  c.toBlob(b=>{URL.revokeObjectURL(u);ok(b)},"image/jpeg",.72)};im.onerror=no;im.src=u})}
+
+document.addEventListener("input",e=>{const t=e.target;
+ if(t.id=="addr")D.addr=t.value;else if(t.id=="date")D.date=t.value;else if(t.id=="link")D.link=t.value.trim();
+ else if(t.dataset.k)D.f[t.dataset.k]=t.value;else if(t.dataset.n)D.n[t.dataset.n]=t.value;else return;save()});
+document.addEventListener("change",async e=>{const t=e.target;if(!t.dataset.p)return;
+ const i=+t.dataset.p;
+ for(const f of t.files){
+  const b=await shrink(f);D.c[i]=(D.c[i]||0)+1;
+  const name=`${safe(D.addr)}_${safe(S[i][0])}_${String(D.c[i]).padStart(2,"0")}_${D.date}.jpg`;
+  const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
+  await putB(id,b);D.ph.push({id,s:i,name,cap:""});save();
+ }
+ t.value="";drawPh(i);
+});
+
+function report(){
+ let h=`<h2>Property Analysis</h2><p><b>${esc(D.addr||"No address")}</b> &nbsp; ${esc(D.date)}</p>`;
+ if(D.link)h+=`<p>Photos: <a href="${esc(D.link)}">${esc(D.link)}</a></p>`;
+ S.forEach(([n,f],i)=>{
+  const fs=F(f),v=fs.map((x,j)=>[x[0],D.f[i+"."+j]]).filter(a=>a[1]&&a[1].trim());
+  const L=D.ph.filter(p=>p.s==i),note=(D.n[i]||"").trim();
+  if(!v.length&&!L.length&&!note)return;
+  h+=`<h3>${n}</h3>`+v.map(a=>`<span class="f"><b>${esc(a[0])}:</b> ${esc(a[1])}</span>`).join("");
+  if(note)h+=`<p class="n"><b>Notes:</b> ${esc(note)}</p>`;
+  if(L.length)h+=`<p style="margin-top:6px"><b>Photos:</b></p>`+L.map(p=>`<p>• ${esc(p.name)}${p.cap?" — "+esc(p.cap):""}</p>`).join("");
+ });
+ h+=`<div class="row noprint"><button onclick="window.print()">Print / Save as PDF</button><button class="alt" onclick="$('#rep').style.display='none';$('#app').style.display='block'">Back</button></div>`;
+ $("#rep").innerHTML=h;$("#rep").style.display="block";$("#app").style.display="none";scrollTo(0,0);
+}
+async function exportPh(){
+ if(!D.ph.length)return alert("No photos yet.");
+ const fs=[];for(const p of D.ph){const b=await getB(p.id);if(b)fs.push(new File([b],p.name,{type:"image/jpeg"}))}
+ try{if(navigator.canShare&&navigator.canShare({files:fs}))return await navigator.share({files:fs});}catch(e){if(e.name=="AbortError")return}
+ fs.forEach(f=>{const a=document.createElement("a");a.href=URL.createObjectURL(f);a.download=f.name;a.click()});
+}
+async function newProj(){
+ if(!confirm("Start a new project? This clears all entries and photos on this phone. Send photos to Files first."))return;
+ await clrB();localStorage.removeItem("scope");location.reload();
+}
+draw();
+if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script></body></html>
