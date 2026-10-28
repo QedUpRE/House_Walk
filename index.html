@@ -33,6 +33,14 @@ button.alt{background:transparent;color:var(--ac);border:1px solid var(--ac)}
 .ph b{color:var(--hot);cursor:pointer;padding:4px 8px}
 .pick{display:inline-block;background:var(--ac);color:#fff;border-radius:8px;padding:10px 14px;font-weight:600;margin-top:10px}
 .pick input{display:none}
+#cam{display:none;position:fixed;inset:0;background:#000;z-index:99;flex-direction:column;color:#fff}
+#cam video{flex:1;min-height:0;width:100%;object-fit:cover}
+#cam .bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top))}
+#cam .bar.b{padding-bottom:calc(18px + env(safe-area-inset-bottom));padding-top:14px}
+#shut{width:72px;height:72px;border-radius:50%;background:#fff;border:5px solid #888;padding:0}
+#shut:active{background:#ccc}
+#cam .done{background:#fff;color:#000}
+#fl{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
 #rep{display:none;background:#fff;color:#000;padding:16px;border-radius:10px}
 #rep h2{margin:0 0 4px}#rep h3{margin:14px 0 4px;border-bottom:1px solid #999;font-size:16px}
 #rep p{margin:2px 0;font-size:14px}#rep .f{display:inline-block;width:48%;font-size:14px;vertical-align:top}
@@ -56,6 +64,8 @@ button.alt{background:transparent;color:var(--ac);border:1px solid var(--ac)}
 <p style="font-size:13px;color:var(--mu);margin:8px 0 0">Send photos to Files, choose your iCloud Drive project folder, then share that folder and paste its link above.</p>
 </div>
 </div>
+<div id="cam"><div class="bar"><b id="ct"></b><span id="cn"></span></div><video id="vid" playsinline muted autoplay></video><div id="fl"></div>
+<div class="bar b"><span style="width:90px"></span><button id="shut" onclick="snap()" aria-label="Take photo"></button><button class="done" onclick="closeCam()">Done</button></div></div>
 <div id="rep"></div>
 </main>
 <script>
@@ -100,7 +110,7 @@ function draw(){
   return `<details><summary class="${hot?"hot":""}">${n}<small id="c${i}"></small></summary><div class="body">
   <div class="grid">${fs.map(([x,o],j)=>{const v=D.f[i+"."+j]||"";return `<label>${esc(x)}`+(o?`<select data-k="${i}.${j}"><option value="">—</option>${o.map(t=>`<option${t==v?" selected":""}>${esc(t)}</option>`).join("")}</select>`:`<input data-k="${i}.${j}" value="${esc(v)}">`)+`</label>`}).join("")}</div>
   <textarea data-n="${i}" placeholder="${n=="Notes"?"General notes":"Notes for "+n}">${esc(D.n[i]||"")}</textarea>
-  <label class="pick">Add photos<input type="file" accept="image/*" multiple data-p="${i}"></label>
+  <button type="button" style="margin-top:10px;margin-right:8px" onclick="openCam(${i})">Take photos</button><label class="pick">From library<input type="file" accept="image/*" multiple data-p="${i}"></label>
   <div id="ph${i}"></div></div></details>`}).join("");
  S.forEach((_,i)=>drawPh(i));
 }
@@ -125,16 +135,38 @@ function shrink(file){return new Promise((ok,no)=>{const im=new Image(),u=URL.cr
 document.addEventListener("input",e=>{const t=e.target;
  if(t.id=="addr")D.addr=t.value;else if(t.id=="date")D.date=t.value;else if(t.id=="link")D.link=t.value.trim();
  else if(t.dataset.k)D.f[t.dataset.k]=t.value;else if(t.dataset.n)D.n[t.dataset.n]=t.value;else return;save()});
+async function addBlob(i,b){
+ D.c[i]=(D.c[i]||0)+1;
+ const name=`${safe(D.addr)}_${safe(S[i][0])}_${String(D.c[i]).padStart(2,"0")}_${D.date}.jpg`;
+ const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
+ D.ph.push({id,s:i,name,cap:""});save();await putB(id,b);
+}
 document.addEventListener("change",async e=>{const t=e.target;if(!t.dataset.p)return;
  const i=+t.dataset.p;
- for(const f of t.files){
-  const b=await shrink(f);D.c[i]=(D.c[i]||0)+1;
-  const name=`${safe(D.addr)}_${safe(S[i][0])}_${String(D.c[i]).padStart(2,"0")}_${D.date}.jpg`;
-  const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
-  await putB(id,b);D.ph.push({id,s:i,name,cap:""});save();
- }
+ for(const f of t.files)await addBlob(i,await shrink(f));
  t.value="";drawPh(i);
 });
+let stream,camS=0,camN=0;
+async function openCam(i){
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1440}},audio:false})}
+ catch(e){alert("Camera not available. Allow camera access for this app in your iPhone settings, or use From library.");return}
+ camS=i;camN=0;const v=$("#vid");v.srcObject=stream;
+ $("#cam").style.display="flex";$("#ct").textContent=S[i][0];$("#cn").textContent="0 taken";
+ try{await v.play()}catch(e){}
+}
+async function snap(){
+ const v=$("#vid");if(!v.videoWidth)return;
+ const k=Math.min(1,1600/Math.max(v.videoWidth,v.videoHeight)),c=document.createElement("canvas");
+ c.width=v.videoWidth*k;c.height=v.videoHeight*k;c.getContext("2d").drawImage(v,0,0,c.width,c.height);
+ const f=$("#fl");f.style.opacity=.7;setTimeout(()=>f.style.opacity=0,80);
+ const b=await new Promise(r=>c.toBlob(r,"image/jpeg",.72));
+ camN++;$("#cn").textContent=camN+" taken";
+ await addBlob(camS,b);
+}
+function closeCam(){
+ if(stream)stream.getTracks().forEach(t=>t.stop());
+ $("#cam").style.display="none";drawPh(camS);
+}
 
 function report(){
  let h=`<h2>Property Analysis</h2><p><b>${esc(D.addr||"No address")}</b> &nbsp; ${esc(D.date)}</p>`;
